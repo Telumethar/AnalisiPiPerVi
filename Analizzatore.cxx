@@ -35,6 +35,18 @@ void printInterp(Interpolazione interp) {
        << interp.corr << " T: " << interp.t_stud << " g.l. " << interp.gl << endl;
 }
 
+bool printInterpToFile(Interpolazione interp, string filename, string extra = "") {
+  ofstream file(filename);
+  if (!file) {
+    return false;
+  }
+  file << extra << endl;
+  file << "a: " << interp.a << "\t b: " << interp.b << endl
+       << "Corr: " << interp.corr << " T: " << interp.t_stud << " g.l. " << interp.gl << endl
+       << "a: " << approssima(interp.a) << "\t b: " << approssima(interp.b) << endl;
+  return true;
+}
+
 vector <double> reciproco(vector <double> vettore) {
   vector <double> res;
   for (int i = 0; i < vettore.size(); ++i) {
@@ -104,23 +116,27 @@ struct SerieDati {
     cout << "Media temp (compressione): " << approssima(media_temp_comp) << endl;
     Interpolazione comp = interpola(pressioni, volumi);
     comp.printAll();
-    this->compressione.printToFile("Results/" + approssima(media_temp_comp.val) + "Comp.txt");
+    this->compressione.printToFile("Results/Graphs/" + approssima(media_temp_comp.val) + "Comp.txt");
 
     pressioni = this->espansione.getColumn(0);
     volumi = this->espansione.getColumn(1);
     temperature = this->espansione.getColumn(2);
     misura media_temp_exp = media(temperature);
+
     cout << "Media temp (espansione): " << approssima(media_temp_exp) << endl;
     Interpolazione esp = interpola(pressioni, volumi);
     esp.printAll();
-    this->espansione.printToFile("Results/" + approssima(media_temp_exp.val) + "Exp.txt");
+    this->espansione.printToFile("Results/Graphs/" + approssima(media_temp_exp.val) + "Exp.txt");
 
     misura R = {8.314472,0}; //J/(K*mol)
-    media_temp_exp.val += 273.15;
-    media_temp_comp.val += 273.15; //Trasformo in Kelvin
 
-    misura n_exp = dividi(dividi(esp.b, R), media_temp_exp);
-    misura n_comp = dividi(dividi(comp.b, R), media_temp_comp);
+    misura n_exp = dividi(dividi(esp.b, R), {media_temp_exp.val +273.15, media_temp_exp.err});
+    misura n_comp = dividi(dividi(comp.b, R), {media_temp_comp.val + 273.15, media_temp_comp.err});
+
+    double compatib = compatibile(n_exp, n_comp);
+
+    printInterpToFile(comp, "Results/" + approssima(media_temp_comp.val) + "Comp.txt", "Media temp (compressione): " + approssima(media_temp_comp) + "\n Stima n: " + approssima(n_comp) + "\n compatib: " + to_string(compatib));
+    printInterpToFile(esp, "Results/" + approssima(media_temp_exp.val) + "Exp.txt", "Media temp (espansione): " + approssima(media_temp_exp) + "\n Stima n: " + approssima(n_exp));
 
     cout << "n exp: " << approssima(n_exp) << " n comp: " << approssima(n_comp) << endl;
     cout << "Compatibilità: " << compatibile(n_exp, n_comp) << "\n";
@@ -166,8 +182,9 @@ int main(void) {
   for (int i = 0; i < tutteMisure.size(); ++i) {
     cout << "Serie " << i << endl;
     tutteMisure[i].Dividi();
+    tutteMisure[i].AnalisiStatistica();
   }
-  tutteMisure[0].AnalisiStatistica();
+  //tutteMisure[0].AnalisiStatistica();
 
   return 0;
 }
