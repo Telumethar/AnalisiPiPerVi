@@ -118,6 +118,22 @@ struct SerieDati {
 
   void FittaIsocora(string folder = "") {
     //TO DO
+    vector <double> pressioni = this->rawdata.getColumn(0);
+    vector <double> temperature = this->rawdata.getColumn(2);
+    vector <double> tempi;
+    for (int i = 0; i < this->rawdata.x; ++i) {
+      tempi.push_back(i/10.0); //10 misure al secondo
+    }
+    this->rawdata.insertColumn(tempi);
+
+    Interpolazione temp = interpola(tempi, temperature, 0, this->sigma_T);
+    Interpolazione pT = interpola(pressioni, temperature, 0, this->sigma_T);
+
+    printInterpToFile(temp, "Results/"+folder+"_interp_temperature.txt");
+    printInterpToFile(pT, "Results/" + folder + "_interp_P_temp.txt");
+
+    this->rawdata.printToFile("Results/"+folder+".txt");
+
   }
 
   void AnalisiStatistica(string folder = "") {
@@ -130,8 +146,8 @@ struct SerieDati {
 
     misura media_temp_comp = media(temperature); //Calcolo la temperatura media durante la trasformazione
     cout << "Media temp (compressione): " << approssima(media_temp_comp) << endl;
-    Interpolazione comp = interpola(pressioni, volumi); //Interpolo (1/P, V)
-    Interpolazione temp_comp = interpola(tempi, temperature); //Temperatura in funzione del tempo
+    Interpolazione comp = interpola(pressioni, volumi, 0, this->sigma_V); //Interpolo (1/P, V)
+    Interpolazione temp_comp = interpola(tempi, temperature, 0, this->sigma_T); //Temperatura in funzione del tempo
     comp.printAll();
     cout << "Temperatura: \n"; temp_comp.printAll();
     this->compressione.printToFile("Results/Graphs/" + folder + approssima(media_temp_comp.val, 3) + "Comp.txt"); //Stampo sul file
@@ -145,8 +161,8 @@ struct SerieDati {
 
     misura media_temp_exp = media(temperature);
     cout << "Media temp (espansione): " << approssima(media_temp_exp) << endl;
-    Interpolazione esp = interpola(pressioni, volumi);
-    Interpolazione temp_esp = interpola(tempi, temperature);
+    Interpolazione esp = interpola(pressioni, volumi, 0, this->sigma_V);
+    Interpolazione temp_esp = interpola(tempi, temperature, 0, this->sigma_T);
 
     esp.printAll();
     cout << "Temperatura: \n"; temp_esp.printAll();
@@ -216,6 +232,21 @@ int main(void) {
   lenta0.AnalisiStatistica("ErroriSist/Lenta_");
   veloce0.AnalisiStatistica("ErroriSist/Veloce_");
   veloce24.AnalisiStatistica("ErroriSist/Veloce_");
+
+  //N diversa
+  SerieDati ndiversa = loadMisure("Data/csv2/Ndiversa.csv");
+  ndiversa.Dividi();
+  ndiversa.AnalisiStatistica("ErroriSist/Ndiversa_");
+
+  //Isocora e tenute
+  SerieDati isocora = loadMisure("Data/csv2/Isocora.csv");
+  isocora.FittaIsocora("ErroriSist/Isocora");
+
+  SerieDati tenutaN = loadMisure("Data/csv2/TenutaN.csv");
+  tenutaN.FittaIsocora("ErroriSist/TenutaN");
+
+  SerieDati tenutaT = loadMisure("Data/csv2/TenutaCalore.csv");
+  tenutaT.FittaIsocora("ErroriSist/TenutaT");
 
   return 0;
 }
