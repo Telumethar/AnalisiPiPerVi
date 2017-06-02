@@ -9,6 +9,8 @@
 
 using namespace std;
 
+
+
 double findEdge(vector <double> vettore, double from) {
   for (int i = from+1; i < vettore.size(); ++i) {
     //cout << vettore[from] << ":" << vettore[i] << endl;
@@ -69,6 +71,13 @@ struct SerieDati {
     this->rawdata.removeColumn(0);
     this->rawdata.insertColumn(reciproco(pressioni), 0);
 
+    //Inserisco indicazione temporale
+    vector <double> tempi;
+    for (int i = 0; i < this->rawdata.x; ++i) {
+      tempi.push_back(i/10.0); //10 misure al secondo
+    }
+    this->rawdata.insertColumn(tempi);
+
 
     vector <double> index_comp, index_exp, index_scarti;
     bool inizio = true;
@@ -106,76 +115,86 @@ struct SerieDati {
       cout << "Scar:\t"; strutturaVector(index_scarti); cout << endl;
     }
   }
-  void AnalisiStatistica(void) {
-    //Valutare con Mathematica l'errore dato dalla temperatura
+
+  void FittaIsocora(string folder = "") {
+    //TO DO
+  }
+
+  void AnalisiStatistica(string folder = "") {
+    //Compressione
+    //Estraggo i dati
     vector <double> pressioni = this->compressione.getColumn(0);
     vector <double> volumi = this->compressione.getColumn(1);
     vector <double> temperature = this->compressione.getColumn(2);
+    vector <double> tempi = this->compressione.getColumn(3);
 
-    misura media_temp_comp = media(temperature);
+    misura media_temp_comp = media(temperature); //Calcolo la temperatura media durante la trasformazione
     cout << "Media temp (compressione): " << approssima(media_temp_comp) << endl;
-    Interpolazione comp = interpola(pressioni, volumi);
+    Interpolazione comp = interpola(pressioni, volumi); //Interpolo (1/P, V)
+    Interpolazione temp_comp = interpola(tempi, temperature); //Temperatura in funzione del tempo
     comp.printAll();
-    this->compressione.printToFile("Results/Graphs/" + approssima(media_temp_comp.val) + "Comp.txt");
+    cout << "Temperatura: \n"; temp_comp.printAll();
+    this->compressione.printToFile("Results/Graphs/" + folder + approssima(media_temp_comp.val, 3) + "Comp.txt"); //Stampo sul file
 
+
+    //Espansione
     pressioni = this->espansione.getColumn(0);
     volumi = this->espansione.getColumn(1);
     temperature = this->espansione.getColumn(2);
-    misura media_temp_exp = media(temperature);
+    tempi = this->espansione.getColumn(3);
 
+    misura media_temp_exp = media(temperature);
     cout << "Media temp (espansione): " << approssima(media_temp_exp) << endl;
     Interpolazione esp = interpola(pressioni, volumi);
+    Interpolazione temp_esp = interpola(tempi, temperature);
+
     esp.printAll();
-    this->espansione.printToFile("Results/Graphs/" + approssima(media_temp_exp.val) + "Exp.txt");
+    cout << "Temperatura: \n"; temp_esp.printAll();
+    this->espansione.printToFile("Results/Graphs/" + folder + approssima(media_temp_exp.val, 3) + "Exp.txt");
 
     misura R = {8.314472,0}; //J/(K*mol)
 
     misura n_exp = dividi(dividi(esp.b, R), {media_temp_exp.val +273.15, media_temp_exp.err});
     misura n_comp = dividi(dividi(comp.b, R), {media_temp_comp.val + 273.15, media_temp_comp.err});
 
-    double compatib = compatibile(n_exp, n_comp);
-
-    printInterpToFile(comp, "Results/" + approssima(media_temp_comp.val) + "Comp.txt", "Media temp (compressione): " + approssima(media_temp_comp) + "\n Stima n: " + approssima(n_comp) + "\n compatib: " + to_string(compatib));
-    printInterpToFile(esp, "Results/" + approssima(media_temp_exp.val) + "Exp.txt", "Media temp (espansione): " + approssima(media_temp_exp) + "\n Stima n: " + approssima(n_exp));
-
-    cout << "n exp: " << approssima(n_exp) << " n comp: " << approssima(n_comp) << endl;
-    cout << "Compatibilità: " << compatibile(n_exp, n_comp) << "\n";
-
+    double compatib_n = compatibile(n_exp, n_comp);
+    double compatib_a = compatibile(comp.a, esp.a);
+    double compatib_b = compatibile(comp.b, esp.b);
+    double compatib_T = compatibile(media_temp_comp, media_temp_exp);
+    string filename = "Results/" + folder + "Interp_" + approssima(media_temp_comp.val, 4) + ".txt";
+    ofstream dati_interpolazione(filename);
+    dati_interpolazione << ",Compressione,Espansione,Compatibilità\n" //Stampo tutti i dati
+                        << "$\\overline{T}$," << approssima(media_temp_comp) << "," << approssima(media_temp_exp) << "," << compatib_T << "\n"
+                        << "a $[cm^3]$," << approssima(comp.a) << "," << approssima(esp.a) << "," << compatib_a << "\n"
+                        << "b $[kg\\,cm]$," << approssima(comp.b) << "," << approssima(esp.b) << "," << compatib_b << "\n"
+                        << "n $[mol]$," << approssima(n_comp) << "," << approssima(n_exp) << "," << compatib_n << "\n"
+                        << "$r_c$," << comp.corr << "," << esp.corr << ",\n"
+                        << "$T_S$," << comp.t_stud << " (" << comp.gl << " g.l.)," << esp.t_stud << " (" << esp.gl << " g.l.),\n";
+    //Stampa info temperatura
+    dati_interpolazione << "Andamento Temperatura, Compressione, Espansione, Compatibilità\n"
+                        << "a $[°C]$," << approssima(temp_comp.a) << "," << approssima(temp_esp.a) << "," << compatibile(temp_comp.a, temp_esp.a) << "\n"
+                        << "b $[°C\\cdot s^{-1}]$," << approssima(temp_comp.b) << "," << approssima(temp_esp.b) << "," << compatibile(temp_comp.b, temp_esp.b) << "\n"
+                        << "$r_c$," << temp_comp.corr << "," << temp_esp.corr << ",\n"
+                        << "$T_S$," << temp_comp.t_stud << " (" << temp_comp.gl << " g.l.)," << temp_esp.t_stud << " (" << temp_esp.gl << " g.l.),\n";
     //FIT or FEED
   }
 };
+
+SerieDati loadMisure(string nomefile);
+
 int main(void) {
   /* Acquisizione dati */
 
   vector <SerieDati> tutteMisure;
   for (int i = 0; i < 6+1; ++i) {
-    ifstream inputfile("Data/csv/" + to_string(i) + ".csv");
-    if (!inputfile) {
-      cout << "Errore I/O al punto: " << i << endl;
-    }
-    string riga;
-    vector <string> celle;
+    string filename = "Data/csv/" + to_string(i) + ".csv";
 
-    SerieDati serieMisure; //Creo una nuova struttura per contenere le misure
-    while (inputfile >> riga) {
-      celle = parseRow(riga);
-      double Pinv = stod(celle[0]), V = stod(celle[1]), T = stod(celle[2]);
-      serieMisure.rawdata.insertRow({Pinv, V, T});
-    }
+    SerieDati serieMisure = loadMisure(filename);
     tutteMisure.push_back(serieMisure); //E la inserisco nel vettore
 
     vector <double> temperature = serieMisure.rawdata.getColumn(2);
     misura media_T = media(temperature);
     cout << "Caricata serie di misure n. " << i << " con media temperature " << approssima(media_T) << endl;
-
-    //serieMisure.misure.printAll();
-
-    /* //Codice per sezionare le misure
-    DataTable<double> compressione, espansione;
-    //Prima c'è l'espansione
-    for (int i = 0; i < serieMisure.misure.x; ++i) { //Scorro le righe
-
-    } */
   }
   cout << "Caricamento completato!\n\n\n";
 
@@ -186,5 +205,35 @@ int main(void) {
   }
   //tutteMisure[0].AnalisiStatistica();
 
+  //Misura bella
+  SerieDati misurabella = loadMisure("Data/csv2/Bella2.csv");
+  misurabella.Dividi();
+  misurabella.AnalisiStatistica("ErroriSist/");
+
+  //Lente/Veloci
+  SerieDati lenta0 = loadMisure("Data/csv2/0lenta.csv"), veloce0 = loadMisure("Data/csv2/0vel.csv"), veloce24 = loadMisure("Data/csv2/24vel.csv");
+  lenta0.Dividi(); veloce0.Dividi(); veloce24.Dividi();
+  lenta0.AnalisiStatistica("ErroriSist/Lenta_");
+  veloce0.AnalisiStatistica("ErroriSist/Veloce_");
+  veloce24.AnalisiStatistica("ErroriSist/Veloce_");
+
   return 0;
+}
+
+SerieDati loadMisure(string nomefile) {
+  ifstream inputfile(nomefile);
+  if (!inputfile) {
+    cout << "Errore I/O, file " << nomefile << " non trovato. " << endl;
+  }
+  string riga;
+  vector <string> celle;
+
+  SerieDati serieMisure; //Creo una nuova struttura per contenere le misure
+  while (inputfile >> riga) {
+    celle = parseRow(riga);
+    double Pinv = stod(celle[0]), V = stod(celle[1]), T = stod(celle[2]);
+    serieMisure.rawdata.insertRow({Pinv, V, T});
+  }
+
+  return serieMisure;
 }
